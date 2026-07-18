@@ -11,7 +11,8 @@
 7. RBAC  
 8. Mandatory Reviews  
 9. CODEOWNERS  
-10. Dependabot  
+10. Dependabot
+11. .test
 
 ---
 
