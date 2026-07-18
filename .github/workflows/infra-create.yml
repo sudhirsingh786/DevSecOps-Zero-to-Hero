@@ -1,4 +1,5 @@
 name: Terraform Deployment
+
 on: [push]
 
 permissions:
@@ -8,12 +9,52 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./terraform
 
     steps:
       - uses: actions/checkout@v4
+
+      # ==========================================================
+      # DEBUG START - Print GitHub OIDC JWT Claims
+      # ==========================================================
+
+      - name: Get GitHub OIDC Token
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setOutput("token", token);
+
+      - name: Decode JWT Payload
+        shell: bash
+        run: |
+          TOKEN="${{ steps.oidc.outputs.token }}"
+          PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
+
+          # Add padding if required
+          LEN=$((${#PAYLOAD} % 4))
+          if [ $LEN -eq 2 ]; then PAYLOAD="${PAYLOAD}=="; fi
+          if [ $LEN -eq 3 ]; then PAYLOAD="${PAYLOAD}="; fi
+
+          echo "================ JWT PAYLOAD ================"
+          echo "$PAYLOAD" | tr '_-' '/+' | base64 -d
+          echo
+          echo "============================================="
+
+      - name: Print GitHub Context
+        run: |
+          echo "Repository : ${{ github.repository }}"
+          echo "Ref        : ${{ github.ref }}"
+          echo "Event      : ${{ github.event_name }}"
+          echo "Actor      : ${{ github.actor }}"
+
+      # ==========================================================
+      # DEBUG END
+      # ==========================================================
 
       - name: Fetch Keys from Vault
         uses: hashicorp/vault-action@v3
@@ -22,10 +63,13 @@ jobs:
           role: gh-actions-role
           method: jwt
           secrets: |
-            aws/creds/terraform-role access_key | AWS_ACCESS_KEY_ID ;
+            aws/creds/terraform-role access_key | AWS_ACCESS_KEY_ID
             aws/creds/terraform-role secret_key | AWS_SECRET_ACCESS_KEY
 
       - uses: hashicorp/setup-terraform@v3
+
       - run: terraform init
+
       - run: terraform plan
+
       - run: terraform apply -auto-approve
